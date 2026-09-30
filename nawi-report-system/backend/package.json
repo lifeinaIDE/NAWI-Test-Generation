@@ -1,0 +1,10 @@
+{
+  "name": "nawi-backend-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Relay script allowing npm run dev from backend directory",
+  "scripts": {
+    "dev": "cd .. && npm run dev",
+    "start": "cd .. && npm run dev"
+  }
+}

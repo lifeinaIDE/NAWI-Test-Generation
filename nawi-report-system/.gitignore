@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Storage (local data — not committed except .gitkeep placeholders)
+backend/storage/reports/*
+backend/storage/attachments/*
+backend/storage/generated-reports/*
+backend/storage/audit/*
+backend/storage/users/*
+!backend/storage/**/.gitkeep
+
+# Node
+node_modules/
+frontend/dist/
+
+# Env
+.env
+.env.local
+
+# IDE
+.vscode/settings.json
+.idea/

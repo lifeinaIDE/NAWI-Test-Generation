@@ -1,0 +1,68 @@
+"""
+NAWI Report System — FastAPI Application Entry Point
+
+Architecture (non-negotiable layering rules):
+  L1  Frontend never touches storage — only calls REST endpoints.
+  L2  Services never touch the filesystem — only repositories do.
+  L3  Backend is source of truth for all calculations, validation, and status changes.
+  L4  Calculation Engine is pure (no I/O) — easiest to unit test.
+
+Error-handling convention (all 4xx responses):
+  { "detail": [ { "level": "ERROR|WARNING|INFO", "field": "...", "message": "..." } ] }
+"""
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import auth, reports, calculations, rules, attachments, audit, dashboard
+
+app = FastAPI(
+    title="NAWI Test Report Management System",
+    description=(
+        "Digitises test-report generation for Non-Automatic Weighing Instruments "
+        "per OIML R-76. File-based storage backend."
+    ),
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# ---------------------------------------------------------------------------
+# CORS — allow Vite dev server and any localhost origin
+# ---------------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------------------------------------------------------------------------
+# Routers
+# ---------------------------------------------------------------------------
+app.include_router(auth.router)
+app.include_router(reports.router)
+app.include_router(calculations.router)
+app.include_router(rules.router)
+app.include_router(attachments.router)
+app.include_router(audit.router)
+app.include_router(dashboard.router)
+
+
+# ---------------------------------------------------------------------------
+# Root health-check
+# ---------------------------------------------------------------------------
+@app.get("/", tags=["health"])
+async def root():
+    return {
+        "service": "NAWI Test Report Management System",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs",
+    }

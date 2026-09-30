@@ -1,0 +1,3 @@
+@echo off
+echo Starting NAWI Calibration & Verification System (Backend + Frontend)...
+npm run dev

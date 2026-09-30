@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* NAWI Report System — Global Design Tokens */
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-color: #09090b; /* zinc-950 */
+    color: #fafafa; /* zinc-50 */
+  }
+
+  body {
+    background-color: transparent;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Minimalist scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+}
