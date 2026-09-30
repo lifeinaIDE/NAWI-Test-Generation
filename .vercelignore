@@ -1,0 +1,12 @@
+# Exclude local dev environment and caches from Vercel builds
+nawi-report-system/backend/.venv
+nawi-report-system/backend/.pytest_cache
+nawi-report-system/backend/__pycache__
+nawi-report-system/frontend/node_modules
+nawi-report-system/frontend/.vite
+nawi-report-system/node_modules
+node_modules
+
+# Docs — not needed for deployment
+nawi-report-system/docs
+DOCS

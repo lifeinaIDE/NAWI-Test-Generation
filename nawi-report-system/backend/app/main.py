@@ -27,17 +27,27 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+import os
+
 # ---------------------------------------------------------------------------
-# CORS — allow Vite dev server and any localhost origin
+# CORS origins — extend via ALLOWED_ORIGINS env var in production
+# e.g. ALLOWED_ORIGINS=https://my-app.vercel.app,https://my-custom-domain.com
 # ---------------------------------------------------------------------------
+_extra_origins = [
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+
+_dev_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=_dev_origins + _extra_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # allow all Vercel preview/prod deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

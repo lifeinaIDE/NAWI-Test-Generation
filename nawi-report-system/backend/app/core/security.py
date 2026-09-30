@@ -1,4 +1,5 @@
 import os
+import warnings
 from datetime import datetime, timedelta
 from typing import Optional, List
 
@@ -10,7 +11,16 @@ from pydantic import BaseModel
 from app.schemas import User
 from app.repositories.user_repository import user_repository
 
-AUTH_SECRET = os.getenv("AUTH_SECRET", "super-secret-prototype-key-phase2")
+_default_secret = "change-me-in-production-set-AUTH_SECRET-env-var"
+AUTH_SECRET = os.getenv("AUTH_SECRET", _default_secret)
+
+if AUTH_SECRET == _default_secret:
+    warnings.warn(
+        "AUTH_SECRET is using the insecure default value. "
+        "Set the AUTH_SECRET environment variable in production.",
+        stacklevel=1,
+    )
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
