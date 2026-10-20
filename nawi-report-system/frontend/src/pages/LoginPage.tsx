@@ -58,10 +58,10 @@ export default function LoginPage() {
 
   async function onSubmit(data: FormData) {
     try {
-      await login(data.username, data.password);
+      await login(data.username.trim(), data.password);
       navigate("/dashboard");
     } catch {
-      setError("password", { message: "Invalid credentials" });
+      setError("password", { message: "Invalid username or password" });
     }
   }
 

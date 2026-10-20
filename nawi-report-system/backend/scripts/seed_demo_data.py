@@ -192,6 +192,16 @@ def seed_users(storage_dir: str):
             "active": True,
             "laboratory": "Central Demo Legal Metrology Laboratory",
         },
+        {
+            "userId": "user-admin-lifeinaide",
+            "id": "user-admin-lifeinaide",
+            "username": "lifeinaIDE",
+            "displayName": "lifeinaIDE (Admin)",
+            "password": hashed_pwd,
+            "role": "ADMIN",
+            "active": True,
+            "laboratory": "Central Demo Legal Metrology Laboratory",
+        },
     ]
 
     users_file = os.path.join(storage_dir, "users", "users.json")

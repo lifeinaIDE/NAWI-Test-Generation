@@ -27,9 +27,12 @@ class JsonUserRepository:
         return self._read_users()
 
     def get_by_username(self, username: str) -> Optional[dict]:
+        if not username:
+            return None
         users = self._read_users()
+        u_clean = username.strip().lower()
         for user in users:
-            if user.get("username") == username:
+            if user.get("username", "").strip().lower() == u_clean:
                 return user
         return None
 
