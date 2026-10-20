@@ -4,7 +4,7 @@
     "backend": {
       "root": "nawi-report-system/backend",
       "framework": "fastapi",
-      "entrypoint": "app/main.py",
+      "entrypoint": "app.main:app",
       "installCommand": "pip install -r requirements.txt"
     },
     "frontend": {
