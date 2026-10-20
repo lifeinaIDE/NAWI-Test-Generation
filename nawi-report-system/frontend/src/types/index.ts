@@ -13,10 +13,13 @@
 export type Role = "TECHNICIAN" | "REVIEWER" | "ADMIN" | "VIEWER";
 
 export interface User {
-  id: string;
+  id?: string;
+  userId?: string;
   username: string;
+  displayName?: string;
   role: Role;
-  laboratory: string;
+  active?: boolean;
+  laboratory?: string;
 }
 
 export interface LoginRequest {
@@ -77,13 +80,18 @@ export interface TestObservation {
 }
 
 export interface CalculationResult {
-  observedError: number;
-  correctedError?: number;
-  maxPermissibleError: number;
+  observedError?: number | null;
+  correctedError?: number | null;
+  maxPermissibleError?: number | null;
+  mpe?: number | null;
+  mpeInE?: number | null;
   result: "PASS" | "FAIL" | "WARNING" | "INCOMPLETE" | "NOT_APPLICABLE";
-  formulaUsed: string;
-  ruleSetVersion: string;
-  details: Record<string, unknown>;
+  formulaUsed?: string;
+  ruleSetVersion?: string;
+  criterion?: string | null;
+  failureReason?: string | null;
+  messages?: string[];
+  details?: Record<string, unknown>;
 }
 
 export interface TestDefinition {
@@ -91,26 +99,28 @@ export interface TestDefinition {
   testName: string;
   applicable: boolean;
   status: "INCOMPLETE" | "COMPLETED" | "PLANNED" | "NOT_APPLICABLE";
-  observations: TestObservation[];
-  calculations: Record<string, unknown>;
-  result: string;
-  remarks: string;
+  observations: any[];
+  calculations?: CalculationResult | Record<string, unknown> | any;
+  result?: string;
+  remarks?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Audit
 // ---------------------------------------------------------------------------
 export interface AuditEvent {
-  eventId: string;
+  eventId?: string;
   userId: string;
-  userRole: string;
+  role?: string;
+  userRole?: string;
   action: string;
   reportId?: string;
   fromStatus?: string;
   toStatus?: string;
-  comment?: string;
+  comment?: string | null;
   timestamp: string;
-  ruleSetVersion?: string;
+  ruleSetVersion?: string | null;
+  details?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,8 +135,22 @@ export interface ReviewInfo {
 // ---------------------------------------------------------------------------
 // Report (core entity — 09_DATA_MODEL.md)
 // ---------------------------------------------------------------------------
+export interface Attachment {
+  id: string;
+  attachmentId?: string;
+  filename: string;
+  storedFilename?: string;
+  type?: string;
+  category?: string;
+  size?: number;
+  sizeBytes?: number;
+  uploadedAt: string;
+  expiryDate?: string | null;
+}
+
 export interface Report {
   reportId: string;
+  title?: string;
   applicationNumber: string;
   status:
     | "DRAFT"
@@ -139,6 +163,7 @@ export interface Report {
   reportVersion: number;
   ruleSetVersion: string;
   createdBy: string;
+  technicianId?: string;
   createdAt: string;
   updatedAt: string;
   laboratory: Laboratory;
@@ -146,7 +171,7 @@ export interface Report {
   instrument: Instrument;
   environment: Environment;
   tests: TestDefinition[];
-  attachments: unknown[];
+  attachments: Attachment[];
   review: ReviewInfo;
   finalResult: "PASS" | "FAIL" | "WARNING" | "PENDING";
   hash: string | null;
@@ -162,14 +187,25 @@ export interface CreateReportRequest {
 // ---------------------------------------------------------------------------
 // Rule-Set (11_RULE_ENGINE_SPEC.md)
 // ---------------------------------------------------------------------------
+export interface MpeBand {
+  minIntervals: number;
+  maxIntervals: number;
+  mpeInE: number;
+  requiresDomainValidation?: boolean;
+}
+
 export interface RuleSet {
   ruleSetId: string;
   standard: string;
   edition: string;
   effectiveFrom: string;
-  changeNotes: string;
-  mpeRules: Record<string, unknown>;
-  testRules: Record<string, unknown>;
+  changeNotes?: string;
+  status?: "ACTIVE" | "DRAFT" | "ARCHIVED" | string;
+  createdBy?: string;
+  createdAt?: string;
+  warningRatio?: number;
+  mpeRules: Record<string, MpeBand[] | any>;
+  testRules: Record<string, any>;
   isActive: boolean;
   isLocked: boolean;
 }
@@ -182,6 +218,7 @@ export interface DashboardSummary {
   drafts: number;
   inProgress: number;
   submittedForReview: number;
+  queryRaised: number;
   approved: number;
   rejected: number;
 }
@@ -189,8 +226,8 @@ export interface DashboardSummary {
 export interface DashboardStatistics {
   passRate: number;
   failRate: number;
-  reportsByModel: Array<{ model: string; count: number }>;
-  recentActivity: Array<{ reportId: string; action: string; timestamp: string; user: string }>;
+  reportsByModel: Array<{ name?: string; model?: string; count: number }>;
+  recentActivity: Array<any>;
 }
 
 // ---------------------------------------------------------------------------

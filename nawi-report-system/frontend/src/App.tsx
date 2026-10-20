@@ -6,12 +6,18 @@ import { AuthProvider } from "./hooks/useAuth";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
 
-import LoginPage      from "./pages/LoginPage";
-import DashboardPage  from "./pages/DashboardPage";
+import LoginPage from "./pages/LoginPage";
+import DashboardPage from "./pages/DashboardPage";
 import RepositoryPage from "./pages/RepositoryPage";
-import ReviewPage     from "./pages/ReviewPage";
-import RuleAdmin      from "./pages/RuleAdmin";
-import WizardPage     from "./pages/WizardPage";
+import ReviewPage from "./pages/ReviewPage";
+import ReviewQueuePage from "./pages/ReviewQueuePage";
+import RuleAdmin from "./pages/RuleAdmin";
+import WizardPage from "./pages/WizardPage";
+import WizardShell from "./pages/WizardShell";
+import AuditPage from "./pages/AuditPage";
+import UsersPage from "./pages/UsersPage";
+import NotAuthorised from "./pages/NotAuthorised";
+import ReportViewPage from "./pages/ReportViewPage";
 
 export default function App() {
   return (
@@ -22,7 +28,7 @@ export default function App() {
           position="top-right"
           toastOptions={{
             style: { background: "#1e293b", color: "#f1f5f9", border: "1px solid #334155" },
-            error:   { iconTheme: { primary: "#ef4444", secondary: "#fef2f2" } },
+            error: { iconTheme: { primary: "#ef4444", secondary: "#fef2f2" } },
             success: { iconTheme: { primary: "#22c55e", secondary: "#f0fdf4" } },
           }}
         />
@@ -30,13 +36,16 @@ export default function App() {
         <Routes>
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/not-authorised" element={<NotAuthorised />} />
 
           {/* Protected — all authenticated roles */}
           <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <AppLayout><DashboardPage /></AppLayout>
+                <AppLayout>
+                  <DashboardPage />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -44,7 +53,9 @@ export default function App() {
             path="/repository"
             element={
               <ProtectedRoute>
-                <AppLayout><RepositoryPage /></AppLayout>
+                <AppLayout>
+                  <RepositoryPage />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -52,7 +63,41 @@ export default function App() {
             path="/reports/:id"
             element={
               <ProtectedRoute>
-                <AppLayout><WizardPage /></AppLayout>
+                <AppLayout>
+                  <WizardPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reports/:id/view"
+            element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <ReportViewPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected — TECHNICIAN + ADMIN only */}
+          <Route
+            path="/reports/new"
+            element={
+              <ProtectedRoute allowedRoles={["TECHNICIAN", "ADMIN"]}>
+                <AppLayout>
+                  <WizardShell />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wizard-shell"
+            element={
+              <ProtectedRoute allowedRoles={["TECHNICIAN", "ADMIN"]}>
+                <AppLayout>
+                  <WizardShell />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -62,7 +107,39 @@ export default function App() {
             path="/review"
             element={
               <ProtectedRoute allowedRoles={["REVIEWER", "ADMIN"]}>
-                <AppLayout><ReviewPage /></AppLayout>
+                <AppLayout>
+                  <ReviewQueuePage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/review-queue"
+            element={
+              <ProtectedRoute allowedRoles={["REVIEWER", "ADMIN"]}>
+                <AppLayout>
+                  <ReviewQueuePage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reports/:id/review"
+            element={
+              <ProtectedRoute allowedRoles={["REVIEWER", "ADMIN"]}>
+                <AppLayout>
+                  <ReviewPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/review/:id"
+            element={
+              <ProtectedRoute allowedRoles={["REVIEWER", "ADMIN"]}>
+                <AppLayout>
+                  <ReviewPage />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -72,7 +149,29 @@ export default function App() {
             path="/rules"
             element={
               <ProtectedRoute allowedRoles={["ADMIN"]}>
-                <AppLayout><RuleAdmin /></AppLayout>
+                <AppLayout>
+                  <RuleAdmin />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/audit"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <AppLayout>
+                  <AuditPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <AppLayout>
+                  <UsersPage />
+                </AppLayout>
               </ProtectedRoute>
             }
           />

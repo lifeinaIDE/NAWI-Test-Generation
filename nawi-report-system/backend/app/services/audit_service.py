@@ -1,78 +1,55 @@
-import json
-import os
 from datetime import datetime, timezone
 from typing import List, Optional
-from pydantic import BaseModel
+from app.schemas import AuditEvent
+from app.repositories.audit_repository import AuditRepository, get_audit_repository
 
-class AuditEvent(BaseModel):
-    timestamp: str
-    userId: str
-    role: str
-    action: str
-    reportId: str
-    fromStatus: str
-    toStatus: str
-    comment: Optional[str] = None
-    ruleSetVersion: Optional[str] = None
-
-AUDIT_LOG_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "storage", "audit", "audit-log.json")
 
 class AuditService:
-    def __init__(self, log_file: str = AUDIT_LOG_FILE):
-        self.log_file = log_file
+    def __init__(self, repo: Optional[AuditRepository] = None):
+        self.repo = repo or get_audit_repository()
 
-    def log_event(self, user_id: str, role: str, action: str, report_id: str, 
-                  from_status: str, to_status: str, comment: Optional[str] = None, 
-                  rule_set_version: Optional[str] = None) -> None:
-        
+    def log_event(
+        self,
+        userId: str,
+        role: str,
+        action: str,
+        reportId: str,
+        fromStatus: str,
+        toStatus: str,
+        comment: Optional[str] = None,
+        ruleSetVersion: Optional[str] = None,
+        timestamp: Optional[str] = None,
+    ) -> AuditEvent:
+        """
+        Logs an audit event in append-only storage via AuditRepository.
+        """
+        event_time = timestamp or datetime.now(timezone.utc).isoformat()
         event = AuditEvent(
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            userId=user_id,
+            userId=userId,
             role=role,
+            userRole=role,
             action=action,
-            reportId=report_id,
-            fromStatus=from_status,
-            toStatus=to_status,
+            reportId=reportId,
+            fromStatus=fromStatus,
+            toStatus=toStatus,
             comment=comment,
-            ruleSetVersion=rule_set_version
+            ruleSetVersion=ruleSetVersion,
+            timestamp=event_time,
         )
-        
-        # Append-only
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(event.model_dump_json() + "\n")
+        self.repo.append_event(event)
+        return event
 
     def get_events_for_report(self, report_id: str) -> List[AuditEvent]:
-        events = []
-        if not os.path.exists(self.log_file):
-            return events
-            
-        with open(self.log_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        data = json.loads(line)
-                        if data.get("reportId") == report_id:
-                            events.append(AuditEvent(**data))
-                    except json.JSONDecodeError:
-                        continue
-        return events
+        return self.repo.get_events_for_report(report_id)
 
     def get_all_events(self) -> List[AuditEvent]:
-        events = []
-        if not os.path.exists(self.log_file):
-            return events
-            
-        with open(self.log_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        data = json.loads(line)
-                        events.append(AuditEvent(**data))
-                    except json.JSONDecodeError:
-                        continue
-        return events
+        return self.repo.get_all_events()
 
-audit_service = AuditService()
+
+_audit_service_instance: Optional[AuditService] = None
 
 def get_audit_service() -> AuditService:
-    return audit_service
+    global _audit_service_instance
+    if _audit_service_instance is None:
+        _audit_service_instance = AuditService()
+    return _audit_service_instance

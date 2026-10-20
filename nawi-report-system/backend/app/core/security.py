@@ -1,70 +1,67 @@
-import os
-import warnings
-from datetime import datetime, timedelta
-from typing import Optional, List
-
+from typing import Optional, List, Union
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from pydantic import BaseModel
 
 from app.schemas import User
 from app.repositories.user_repository import user_repository
-
-_default_secret = "change-me-in-production-set-AUTH_SECRET-env-var"
-AUTH_SECRET = os.getenv("AUTH_SECRET", _default_secret)
-
-if AUTH_SECRET == _default_secret:
-    warnings.warn(
-        "AUTH_SECRET is using the insecure default value. "
-        "Set the AUTH_SECRET environment variable in production.",
-        stacklevel=1,
-    )
+from app.core.config import settings
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
-security = HTTPBearer()
+# auto_error=False so missing authorization header raises 401 instead of FastAPI's default 403
+security = HTTPBearer(auto_error=False)
+
 
 def create_access_token(data: dict) -> str:
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, AUTH_SECRET, algorithm=ALGORITHM)
-    return encoded_jwt
+    from app.services.auth_service import auth_service
+    return auth_service.create_access_token(data)
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
-    token = credentials.credentials
+
+async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=[{"level": "ERROR", "field": "", "message": "Could not validate credentials"}],
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not credentials or not credentials.credentials:
+        raise credentials_exception
+
+    token = credentials.credentials
     try:
-        payload = jwt.decode(token, AUTH_SECRET, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
+        payload = jwt.decode(token, settings.AUTH_SECRET, algorithms=[ALGORITHM])
+        user_id: Optional[str] = payload.get("sub")
         if user_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    
-    user_dict = user_repository.get_user_by_id(user_id)
-    if user_dict is None:
+
+    user_dict = user_repository.get_by_id(user_id)
+    if user_dict is None or not user_dict.get("active", True):
         raise credentials_exception
-    
+
     return User(
-        id=user_dict["id"],
+        userId=user_dict["userId"],
         username=user_dict["username"],
+        displayName=user_dict.get("displayName") or user_dict["username"],
         role=user_dict["role"],
-        laboratory=user_dict["laboratory"]
+        active=user_dict.get("active", True),
+        laboratory=user_dict.get("laboratory", "Central Legal Metrology Laboratory"),
     )
 
-def require_role(allowed_roles: List[str]):
+
+def require_role(*roles: Union[str, List[str]]):
+    if len(roles) == 1 and isinstance(roles[0], (list, tuple, set)):
+        allowed = list(roles[0])
+    else:
+        allowed = list(roles)
+
     def role_checker(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role not in allowed_roles:
+        if current_user.role not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=[{"level": "ERROR", "field": "", "message": "Not authorized for this action"}],
             )
         return current_user
+
     return role_checker

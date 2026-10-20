@@ -14,14 +14,25 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+from pydantic.alias_generators import to_camel
+
+
 # ---------------------------------------------------------------------------
 # Shared config — all schemas serialise with camelCase alias population
 # ---------------------------------------------------------------------------
 class CamelModel(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
-        alias_generator=None,  # aliases set per-field below
+        alias_generator=to_camel,
     )
+
+
+class Attachment(CamelModel):
+    id: str = Field(..., alias="id")
+    filename: str = Field(..., alias="filename")
+    type: str = Field(default="image/jpeg", alias="type")
+    size: int = Field(default=0, alias="size")
+    uploadedAt: str = Field(default="", alias="uploadedAt")
 
 
 # ---------------------------------------------------------------------------
@@ -44,10 +55,21 @@ Role = str  # "TECHNICIAN" | "REVIEWER" | "ADMIN" | "VIEWER"
 
 
 class User(CamelModel):
-    id: str = Field(..., alias="id")
+    userId: str = Field(..., alias="userId")
     username: str = Field(..., alias="username")
+    displayName: str = Field(default="", alias="displayName")
     role: Role = Field(..., alias="role")
-    laboratory: str = Field(..., alias="laboratory")
+    active: bool = Field(default=True, alias="active")
+    laboratory: str = Field(default="Central Legal Metrology Laboratory", alias="laboratory")
+
+    def __init__(self, **data):
+        if "id" in data and "userId" not in data:
+            data["userId"] = data["id"]
+        super().__init__(**data)
+
+    @property
+    def id(self) -> str:
+        return self.userId
 
 
 class LoginRequest(CamelModel):
@@ -108,13 +130,18 @@ class TestObservation(CamelModel):
 
 
 class CalculationResult(CamelModel):
-    observedError: float = Field(default=0.0, alias="observedError")
-    correctedError: Optional[float] = Field(default=None, alias="correctedError")
-    maxPermissibleError: float = Field(default=0.0, alias="maxPermissibleError")
     result: str = Field(default="INCOMPLETE", alias="result")
     # "PASS" | "FAIL" | "WARNING" | "INCOMPLETE" | "NOT_APPLICABLE"
+    observedError: Optional[float] = Field(default=None, alias="observedError")
+    correctedError: Optional[float] = Field(default=None, alias="correctedError")
+    maxPermissibleError: Optional[float] = Field(default=None, alias="maxPermissibleError")
+    mpe: Optional[float] = Field(default=None, alias="mpe")
+    mpeInE: Optional[float] = Field(default=None, alias="mpeInE")
     formulaUsed: str = Field(default="", alias="formulaUsed")
     ruleSetVersion: str = Field(default="", alias="ruleSetVersion")
+    criterion: Optional[str] = Field(default=None, alias="criterion")
+    failureReason: Optional[str] = Field(default=None, alias="failureReason")
+    messages: list[str] = Field(default_factory=list, alias="messages")
     details: dict[str, Any] = Field(default_factory=dict, alias="details")
 
 
@@ -124,7 +151,7 @@ class TestDefinition(CamelModel):
     applicable: bool = Field(default=True, alias="applicable")
     status: str = Field(default="INCOMPLETE", alias="status")
     # "INCOMPLETE" | "COMPLETED" | "PLANNED" | "NOT_APPLICABLE"
-    observations: list[TestObservation] = Field(default_factory=list, alias="observations")
+    observations: list[Any] = Field(default_factory=list, alias="observations")
     calculations: dict[str, Any] = Field(default_factory=dict, alias="calculations")
     result: str = Field(default="INCOMPLETE", alias="result")
     remarks: str = Field(default="", alias="remarks")
@@ -134,9 +161,10 @@ class TestDefinition(CamelModel):
 # Audit
 # ---------------------------------------------------------------------------
 class AuditEvent(CamelModel):
-    eventId: str = Field(..., alias="eventId")
+    eventId: Optional[str] = Field(default=None, alias="eventId")
     userId: str = Field(..., alias="userId")
-    userRole: str = Field(..., alias="userRole")
+    role: Optional[str] = Field(default=None, alias="role")
+    userRole: Optional[str] = Field(default=None, alias="userRole")
     action: str = Field(..., alias="action")
     reportId: Optional[str] = Field(default=None, alias="reportId")
     fromStatus: Optional[str] = Field(default=None, alias="fromStatus")
@@ -160,11 +188,13 @@ class ReviewInfo(CamelModel):
 # ---------------------------------------------------------------------------
 class Report(CamelModel):
     reportId: str = Field(..., alias="reportId")
+    title: str = Field(default="", alias="title")
     applicationNumber: str = Field(default="", alias="applicationNumber")
     status: str = Field(default="DRAFT", alias="status")
     reportVersion: int = Field(default=1, alias="reportVersion")
     ruleSetVersion: str = Field(default="", alias="ruleSetVersion")
     createdBy: str = Field(default="", alias="createdBy")
+    technicianId: Optional[str] = Field(default=None, alias="technicianId")
     createdAt: str = Field(default="", alias="createdAt")
     updatedAt: str = Field(default="", alias="updatedAt")
     laboratory: Laboratory = Field(default_factory=Laboratory, alias="laboratory")
@@ -194,6 +224,10 @@ class RuleSet(CamelModel):
     edition: str = Field(..., alias="edition")
     effectiveFrom: str = Field(..., alias="effectiveFrom")
     changeNotes: str = Field(default="", alias="changeNotes")
+    status: str = Field(default="ACTIVE", alias="status")
+    createdBy: str = Field(default="system", alias="createdBy")
+    createdAt: str = Field(default="", alias="createdAt")
+    warningRatio: Optional[float] = Field(default=None, alias="warningRatio")
     mpeRules: dict[str, Any] = Field(default_factory=dict, alias="mpeRules")
     testRules: dict[str, Any] = Field(default_factory=dict, alias="testRules")
     isActive: bool = Field(default=False, alias="isActive")
@@ -208,6 +242,7 @@ class DashboardSummary(CamelModel):
     drafts: int = Field(default=0, alias="drafts")
     inProgress: int = Field(default=0, alias="inProgress")
     submittedForReview: int = Field(default=0, alias="submittedForReview")
+    queryRaised: int = Field(default=0, alias="queryRaised")
     approved: int = Field(default=0, alias="approved")
     rejected: int = Field(default=0, alias="rejected")
 
@@ -216,4 +251,4 @@ class DashboardStatistics(CamelModel):
     passRate: float = Field(default=0.0, alias="passRate")
     failRate: float = Field(default=0.0, alias="failRate")
     reportsByModel: list[dict[str, Any]] = Field(default_factory=list, alias="reportsByModel")
-    recentActivity: list[dict[str, Any]] = Field(default_factory=list, alias="recentActivity")
+    recentActivity: list[Union[AuditEvent, dict[str, Any]]] = Field(default_factory=list, alias="recentActivity")

@@ -12,3 +12,13 @@ async def get_audit_log(
 ):
     events = audit_service.get_all_events()
     return {"events": events, "total": len(events)}
+
+
+@router.get("/{report_id}", summary="Audit log for specific report")
+async def get_report_audit_events(
+    report_id: str,
+    current_user: User = Depends(require_role(["REVIEWER", "ADMIN"])),
+    audit_service: AuditService = Depends(get_audit_service)
+):
+    events = audit_service.get_events_for_report(report_id)
+    return {"reportId": report_id, "events": events, "total": len(events)}

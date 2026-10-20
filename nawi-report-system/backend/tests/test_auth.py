@@ -29,7 +29,39 @@ def test_technician_cannot_approve_report():
     assert data["detail"][0]["message"] == "Not authorized for this action"
 
 def test_reviewer_can_approve_report():
-    # Verify a reviewer CAN access the endpoint
+    # 1. Login as tech and create & submit a report
+    tech_login = client.post("/api/auth/login", json={"username": "technician", "password": "demo123"})
+    assert tech_login.status_code == 200
+    tech_token = tech_login.json()["token"]
+    tech_headers = {"Authorization": f"Bearer {tech_token}"}
+    
+    rep_res = client.post("/api/reports", json={
+        "applicationNumber": "APP-2026-001",
+        "instrument": {"model": "ScaleX", "serialNumber": "SN-001", "accuracyClass": "III", "maxCapacity": 3000, "minCapacity": 20, "verificationIntervalE": 1, "actualIntervalD": 1, "numberOfIntervalsN": 3000},
+        "environment": {"temperatureStart": 20.0, "temperatureEnd": 22.0, "relativeHumidity": 50.0},
+        "manufacturer": {},
+        "laboratory": {"name": "National Weights and Measures Lab"}
+    }, headers=tech_headers)
+    assert rep_res.status_code == 200
+    rep_id = rep_res.json()["reportId"]
+    
+    rep_data = client.get(f"/api/reports/{rep_id}", headers=tech_headers).json()
+    rep_data["tests"] = [
+        {
+            "testCode": "WEIGHING_PERFORMANCE",
+            "testName": "WP",
+            "applicable": True,
+            "status": "COMPLETED",
+            "result": "PASS",
+            "observations": [{"testLoad": 1000, "indication": 1000, "zeroError": 0}],
+            "calculations": {"result": "PASS"}
+        }
+    ]
+    client.put(f"/api/reports/{rep_id}", json=rep_data, headers=tech_headers)
+    submit_res = client.post(f"/api/reports/{rep_id}/submit", headers=tech_headers)
+    assert submit_res.status_code == 200
+
+    # 2. Login as reviewer
     login_data = {
         "username": "reviewer",
         "password": "demo123"
@@ -41,7 +73,7 @@ def test_reviewer_can_approve_report():
     headers = {
         "Authorization": f"Bearer {token}"
     }
-    approve_response = client.post("/api/reports/NAWI-2026-0001/approve", headers=headers)
+    approve_response = client.post(f"/api/reports/{rep_id}/approve", headers=headers, json={"comment": "Approved by reviewer"})
     
-    # Should be 200 OK since it's a stub that returns the stubbed object
     assert approve_response.status_code == 200
+    assert approve_response.json()["status"] == "APPROVED"

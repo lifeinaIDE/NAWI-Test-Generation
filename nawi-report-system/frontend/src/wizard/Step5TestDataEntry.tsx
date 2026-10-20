@@ -1,355 +1,888 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import type { Report, TestDefinition, CalculationResult } from "../types";
-import { calculationsApi } from "../api";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { useCalculation } from "../hooks/useCalculation";
+import PassFailIndicator from "../components/PassFailIndicator";
+import PlatformMap from "../components/PlatformMap";
+import RepeatabilityChart from "../components/RepeatabilityChart";
 
-function Badge({ result }: { result: CalculationResult | null }) {
-  if (!result) return <span className="px-2 py-1 bg-zinc-800 text-zinc-400 rounded text-xs font-semibold">INCOMPLETE</span>;
-  
-  const status = result.result;
-  let color = "bg-zinc-800 text-zinc-400 border-zinc-700";
-  if (status === "PASS") color = "bg-green-500/10 text-green-400 border-green-500/20";
-  if (status === "FAIL") color = "bg-red-500/10 text-red-400 border-red-500/20";
-  if (status === "WARNING") color = "bg-amber-500/10 text-amber-400 border-amber-500/20";
+const ECCENTRICITY_POSITIONS = [
+  "CENTER",
+  "FRONT_LEFT",
+  "FRONT_RIGHT",
+  "REAR_LEFT",
+  "REAR_RIGHT",
+] as const;
 
-  return (
-    <div className="flex items-center gap-2">
-      <span className={`px-2.5 py-1 text-xs font-semibold rounded border ${color}`}>
-        {status}
-      </span>
-      {result.maxPermissibleError !== undefined && (
-        <span className="text-xs text-zinc-500 group relative flex items-center gap-1 cursor-help" title="Requires domain validation.">
-          MPE: ±{result.maxPermissibleError.toFixed(2)}
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </span>
-      )}
-    </div>
-  );
+interface Step5Props {
+  report: Report;
+  onSave: (payload: Partial<Report>) => Promise<Report>;
+  onNext: () => void;
+  onPrev: () => void;
 }
 
-function WeighingPerformance({ test, report, onChange }: any) {
-  const [data, setData] = useState(test.observations[0] || { testLoad: "", indication: "", zeroError: "0" });
-  const [result, setResult] = useState<CalculationResult | null>(null);
-
-  const calculate = useCallback(async (d: any) => {
-    if (d.testLoad === "" || d.indication === "") return;
-    try {
-      const res = await calculationsApi.weighingPerformance({
-        testLoad: Number(d.testLoad),
-        indication: Number(d.indication),
-        zeroError: Number(d.zeroError || 0),
-        e: report.instrument?.verificationIntervalE || 1,
-        accuracyClass: report.instrument?.accuracyClass || "III"
-      });
-      setResult(res);
-      onChange({ ...test, observations: [d], result: res.result, calculations: res });
-    } catch (err) {}
-  }, [report, test, onChange]);
-
-  const handleChange = (e: any) => {
-    const newData = { ...data, [e.target.name]: e.target.value };
-    setData(newData);
-    calculate(newData);
-  };
-
-  return (
-    <div className="p-6 bg-zinc-900/50 border border-zinc-800/80 rounded-xl space-y-4">
-      <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-        <h3 className="text-sm font-medium text-zinc-300">Weighing Performance</h3>
-        <Badge result={result} />
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <label className="block text-xs text-zinc-500 mb-1">Test Load</label>
-          <input type="number" name="testLoad" value={data.testLoad} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none" />
-        </div>
-        <div>
-          <label className="block text-xs text-zinc-500 mb-1">Indication</label>
-          <input type="number" name="indication" value={data.indication} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none" />
-        </div>
-        <div>
-          <label className="block text-xs text-zinc-500 mb-1">Zero Error</label>
-          <input type="number" name="zeroError" value={data.zeroError} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none" />
-        </div>
-      </div>
-      {result && (
-        <div className="text-xs text-zinc-500 bg-zinc-950/50 p-2 rounded">
-          Observed Error: {result.observedError?.toFixed(2)} | Formula: {result.formulaUsed}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Eccentricity({ test, report, onChange }: any) {
-  const positions = ["CENTER", "FRONT_LEFT", "FRONT_RIGHT", "REAR_LEFT", "REAR_RIGHT"];
-  const initialObs = test.observations.length > 0 ? test.observations : positions.map(p => ({ position: p, indication: "", reference: "" }));
-  const [data, setData] = useState(initialObs);
-  const [result, setResult] = useState<CalculationResult | null>(null);
-
-  const calculate = useCallback(async (d: any) => {
-    if (d.some((x: any) => x.indication === "" || x.reference === "")) return;
-    try {
-      const res = await calculationsApi.eccentricity({
-        loads: d.map((x: any) => ({ position: x.position, indication: Number(x.indication), reference: Number(x.reference) })),
-        e: report.instrument?.verificationIntervalE || 1,
-        accuracyClass: report.instrument?.accuracyClass || "III"
-      });
-      setResult(res);
-      onChange({ ...test, observations: d, result: res.result, calculations: res });
-    } catch (err) {}
-  }, [report, test, onChange]);
-
-  const handleChange = (index: number, field: string, value: string) => {
-    const newData = [...data];
-    newData[index][field] = value;
-    setData(newData);
-    calculate(newData);
-  };
-
-  const getPosColor = (pos: string) => {
-    if (!result?.details?.positions) return "bg-zinc-800 text-zinc-500 border-zinc-700";
-    const positions = result.details.positions as any[];
-    const p = positions.find((x: any) => x.position === pos);
-    if (!p) return "bg-zinc-800 border-zinc-700 text-zinc-500";
-    if (Math.abs(p.error) > p.mpe) return "bg-red-500/10 text-red-400 border-red-500/30";
-    if (Math.abs(p.error) > p.mpe * 0.9) return "bg-amber-500/10 text-amber-400 border-amber-500/30";
-    return "bg-green-500/10 text-green-400 border-green-500/30";
-  };
-
-  return (
-    <div className="p-6 bg-zinc-900/50 border border-zinc-800/80 rounded-xl space-y-4">
-      <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-        <h3 className="text-sm font-medium text-zinc-300">Eccentricity</h3>
-        <Badge result={result} />
-      </div>
-      
-      <div className="flex flex-col md:flex-row gap-6">
-        <div className="flex-1 space-y-2">
-          <div className="grid grid-cols-3 gap-2 mb-2 text-xs text-zinc-500">
-            <div>Position</div><div>Reference</div><div>Indication</div>
-          </div>
-          {data.map((obs: any, i: number) => (
-            <div key={obs.position} className="grid grid-cols-3 gap-2">
-              <div className="text-xs text-zinc-400 flex items-center">{obs.position}</div>
-              <input type="number" value={obs.reference} onChange={(e) => handleChange(i, "reference", e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm text-zinc-200 focus:outline-none" />
-              <input type="number" value={obs.indication} onChange={(e) => handleChange(i, "indication", e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm text-zinc-200 focus:outline-none" />
-            </div>
-          ))}
-        </div>
-        
-        <div className="w-48 h-48 relative border-2 border-zinc-800 rounded-lg bg-zinc-950/50 mx-auto flex-shrink-0">
-          <div className={`absolute top-2 left-2 w-10 h-10 border rounded flex items-center justify-center text-[10px] ${getPosColor("REAR_LEFT")}`}>RL</div>
-          <div className={`absolute top-2 right-2 w-10 h-10 border rounded flex items-center justify-center text-[10px] ${getPosColor("REAR_RIGHT")}`}>RR</div>
-          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 border rounded flex items-center justify-center text-[10px] ${getPosColor("CENTER")}`}>C</div>
-          <div className={`absolute bottom-2 left-2 w-10 h-10 border rounded flex items-center justify-center text-[10px] ${getPosColor("FRONT_LEFT")}`}>FL</div>
-          <div className={`absolute bottom-2 right-2 w-10 h-10 border rounded flex items-center justify-center text-[10px] ${getPosColor("FRONT_RIGHT")}`}>FR</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Repeatability({ test, report, onChange }: any) {
-  const initialObs = test.observations.length > 0 ? test.observations : Array(10).fill({ reading: "" });
-  const [data, setData] = useState(initialObs);
-  const [testLoad, setTestLoad] = useState(test.calculations?.details?.testLoad || "");
-  const [result, setResult] = useState<CalculationResult | null>(null);
-
-  const calculate = useCallback(async (d: any, tl: string) => {
-    const validReadings = d.map((x: any) => Number(x.reading)).filter((x: number) => !isNaN(x) && x !== 0);
-    if (validReadings.length < 2 || tl === "") return;
-    try {
-      const res = await calculationsApi.repeatability({
-        testLoad: Number(tl),
-        readings: validReadings,
-        e: report.instrument?.verificationIntervalE || 1,
-        accuracyClass: report.instrument?.accuracyClass || "III"
-      });
-      setResult(res);
-      onChange({ ...test, observations: d, result: res.result, calculations: res });
-    } catch (err) {}
-  }, [report, test, onChange]);
-
-  const handleChange = (index: number, value: string) => {
-    const newData = [...data];
-    newData[index] = { reading: value };
-    setData(newData);
-    calculate(newData, testLoad);
-  };
-  
-  const handleLoadChange = (e: any) => {
-    setTestLoad(e.target.value);
-    calculate(data, e.target.value);
-  }
-
-  const chartData = data.map((d: any, i: number) => ({ name: i+1, val: Number(d.reading) || null })).filter((d: any) => d.val !== null);
-  const minVal = chartData.length > 0 ? Math.min(...chartData.map((d: any) => d.val)) : 0;
-  const maxVal = chartData.length > 0 ? Math.max(...chartData.map((d: any) => d.val)) : 0;
-  const domain = [minVal - (maxVal-minVal)*0.5 - 1, maxVal + (maxVal-minVal)*0.5 + 1];
-
-  return (
-    <div className="p-6 bg-zinc-900/50 border border-zinc-800/80 rounded-xl space-y-4">
-      <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-        <h3 className="text-sm font-medium text-zinc-300">Repeatability</h3>
-        <Badge result={result} />
-      </div>
-      
-      <div>
-        <label className="block text-xs text-zinc-500 mb-1">Test Load</label>
-        <input type="number" value={testLoad} onChange={handleLoadChange} className="w-1/3 bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none mb-4" />
-      </div>
-
-      <div className="flex flex-col md:flex-row gap-6">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 w-full md:w-1/2">
-          {data.map((obs: any, i: number) => (
-            <div key={i}>
-              <label className="block text-[10px] text-zinc-600 mb-0.5">Rep {i+1}</label>
-              <input type="number" value={obs.reading} onChange={(e) => handleChange(i, e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm text-zinc-200 focus:outline-none" />
-            </div>
-          ))}
-        </div>
-        
-        <div className="w-full md:w-1/2 h-32 border border-zinc-800/50 rounded-lg p-2 bg-zinc-950/30">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis dataKey="name" hide />
-              <YAxis domain={domain} hide />
-              <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '4px', fontSize: '12px' }} />
-              <Line type="monotone" dataKey="val" stroke="#a1a1aa" strokeWidth={2} dot={{ r: 3, fill: '#e4e4e7' }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Discrimination({ test, report, onChange }: any) {
-  const [data, setData] = useState(test.observations[0] || { initialIndication: "", addedLoad: "", newIndication: "" });
-  const [result, setResult] = useState<CalculationResult | null>(null);
-
-  const calculate = useCallback(async (d: any) => {
-    if (d.initialIndication === "" || d.addedLoad === "" || d.newIndication === "") return;
-    try {
-      const res = await calculationsApi.discrimination({
-        initialIndication: Number(d.initialIndication),
-        addedLoad: Number(d.addedLoad),
-        newIndication: Number(d.newIndication),
-        d: report.instrument?.actualIntervalD || 1,
-        ruleSet: "OIML-R76-PROTOTYPE-V1"
-      });
-      setResult(res);
-      onChange({ ...test, observations: [d], result: res.result, calculations: res });
-    } catch (err) {}
-  }, [report, test, onChange]);
-
-  const handleChange = (e: any) => {
-    const newData = { ...data, [e.target.name]: e.target.value };
-    setData(newData);
-    calculate(newData);
-  };
-
-  return (
-    <div className="p-6 bg-zinc-900/50 border border-zinc-800/80 rounded-xl space-y-4">
-      <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-        <h3 className="text-sm font-medium text-zinc-300">Discrimination</h3>
-        <Badge result={result} />
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <label className="block text-xs text-zinc-500 mb-1">Initial Indication</label>
-          <input type="number" name="initialIndication" value={data.initialIndication} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none" />
-        </div>
-        <div>
-          <label className="block text-xs text-zinc-500 mb-1">Added Load (d)</label>
-          <input type="number" name="addedLoad" value={data.addedLoad} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none" />
-        </div>
-        <div>
-          <label className="block text-xs text-zinc-500 mb-1">New Indication</label>
-          <input type="number" name="newIndication" value={data.newIndication} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function Step5TestDataEntry({ report, onSave, onNext, onPrev, ...props }: any) {
+export default function Step5TestDataEntry({
+  report,
+  onSave,
+  onNext,
+  onPrev,
+}: Step5Props) {
   const [tests, setTests] = useState<TestDefinition[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTestCode, setActiveTestCode] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
 
+  // Initialize tests from report
   useEffect(() => {
     if (report?.tests) {
-      setTests([...report.tests]);
+      setTests(report.tests);
+      const firstApplicable = report.tests.find((t) => t.applicable);
+      if (firstApplicable && (!activeTestCode || !report.tests.some(t => t.testCode === activeTestCode && t.applicable))) {
+        setActiveTestCode(firstApplicable.testCode);
+      }
     }
   }, [report]);
 
-  const handleTestChange = (updatedTest: TestDefinition) => {
-    setTests(prev => prev.map(t => t.testCode === updatedTest.testCode ? updatedTest : t));
+  const applicableTests = useMemo(
+    () => (tests || []).filter((t) => t.applicable),
+    [tests]
+  );
+
+  const updateTestDefinition = (updated: TestDefinition) => {
+    setTests((prev) =>
+      prev.map((t) => (t.testCode === updated.testCode ? updated : t))
+    );
   };
 
-  const handleSaveDraft = async () => {
-    setIsSubmitting(true);
+  const handleSaveAndContinue = async () => {
+    setIsSaving(true);
     try {
-      await onSave(tests, "tests");
+      await onSave({ tests });
       onNext();
     } finally {
-      setIsSubmitting(false);
+      setIsSaving(false);
     }
   };
 
-  const applicableTests = tests.filter(t => t.applicable);
+  const activeTest = applicableTests.find((t) => t.testCode === activeTestCode);
+
+  // Dot color helper strictly from backend result
+  const getStatusDotColor = (result?: string) => {
+    if (result === "PASS") return "bg-emerald-400";
+    if (result === "WARNING") return "bg-amber-400";
+    if (result === "FAIL") return "bg-rose-500";
+    return "bg-zinc-600";
+  };
 
   return (
-    <div>
-      <div className="mb-10">
-        <h2 className="text-2xl font-light text-zinc-100 tracking-tight">Test Data Entry</h2>
-        <p className="text-zinc-500 text-sm mt-1">Record observations for all applicable tests.</p>
+    <div className="space-y-6">
+      {/* Step Header */}
+      <div>
+        <h2 className="text-xl font-medium text-zinc-100 tracking-tight">
+          Step 5: Test Data Entry & Live Compliance Calculations
+        </h2>
+        <p className="text-zinc-500 text-xs mt-1">
+          Record physical test observations. All MPE checks and compliance determinations are executed entirely by the backend rule engine.
+        </p>
       </div>
 
-      {applicableTests.length === 0 && (
-        <div className="p-8 text-center text-zinc-500 border border-dashed border-zinc-800 rounded-xl">
-          No tests selected as applicable. Go back to Step 4.
+      {applicableTests.length === 0 ? (
+        <div className="p-8 text-center text-zinc-500 border border-dashed border-zinc-800 rounded-2xl bg-zinc-950/40">
+          <p className="text-sm">No tests selected as applicable. Please return to Step 4 to mark tests applicable.</p>
+          <button
+            type="button"
+            onClick={onPrev}
+            className="mt-3 text-xs text-sky-400 hover:text-sky-300 underline"
+          >
+            ← Return to Step 4 Test Selection
+          </button>
         </div>
+      ) : (
+        <>
+          {/* Test Tabs with Result Dot */}
+          <div className="flex flex-wrap gap-2 border-b border-zinc-800/80 pb-3" role="tablist">
+            {applicableTests.map((t) => {
+              const isActive = t.testCode === activeTestCode;
+              return (
+                <button
+                  key={t.testCode}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveTestCode(t.testCode)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all border cursor-pointer ${
+                    isActive
+                      ? "bg-zinc-800 border-zinc-700 text-zinc-100 shadow-sm"
+                      : "bg-zinc-950/60 border-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${getStatusDotColor(t.result)}`}
+                    data-testid={`dot-${t.testCode}`}
+                  />
+                  <span>{t.testName}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Test View */}
+          {activeTest && (
+            <div className="space-y-6">
+              {activeTest.testCode === "WEIGHING_PERFORMANCE" && (
+                <WeighingPerformanceView
+                  test={activeTest}
+                  report={report}
+                  onChange={updateTestDefinition}
+                />
+              )}
+
+              {activeTest.testCode === "ECCENTRICITY" && (
+                <EccentricityView
+                  test={activeTest}
+                  report={report}
+                  onChange={updateTestDefinition}
+                />
+              )}
+
+              {activeTest.testCode === "REPEATABILITY" && (
+                <RepeatabilityView
+                  test={activeTest}
+                  report={report}
+                  onChange={updateTestDefinition}
+                />
+              )}
+
+              {activeTest.testCode === "DISCRIMINATION" && (
+                <DiscriminationView
+                  test={activeTest}
+                  report={report}
+                  onChange={updateTestDefinition}
+                />
+              )}
+
+              {!["WEIGHING_PERFORMANCE", "ECCENTRICITY", "REPEATABILITY", "DISCRIMINATION"].includes(
+                activeTest.testCode
+              ) && (
+                <div className="p-6 bg-zinc-900/30 border border-zinc-800/40 rounded-2xl space-y-2">
+                  <h3 className="text-sm font-medium text-zinc-300">{activeTest.testName}</h3>
+                  <div className="bg-amber-500/10 text-amber-400 text-xs px-3 py-2 rounded-lg border border-amber-500/20 font-medium">
+                    Planned — Not implemented in prototype. (D2)
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
-      <div className="space-y-6">
-        {applicableTests.map(t => {
-          if (t.testCode === "WEIGHING_PERFORMANCE") return <WeighingPerformance key={t.testCode} test={t} report={report} onChange={handleTestChange} />;
-          if (t.testCode === "ECCENTRICITY") return <Eccentricity key={t.testCode} test={t} report={report} onChange={handleTestChange} />;
-          if (t.testCode === "REPEATABILITY") return <Repeatability key={t.testCode} test={t} report={report} onChange={handleTestChange} />;
-          if (t.testCode === "DISCRIMINATION") return <Discrimination key={t.testCode} test={t} report={report} onChange={handleTestChange} />;
-          
-          // Fallback for planned tests
-          return (
-            <div key={t.testCode} className="p-6 bg-zinc-900/20 border border-zinc-800/30 rounded-xl opacity-75">
-              <h3 className="text-sm font-medium text-zinc-400 mb-2">{t.testName}</h3>
-              <div className="bg-amber-500/10 text-amber-400/90 text-xs px-3 py-2 rounded border border-amber-500/20 font-medium">
-                Planned — Not implemented in prototype.
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex justify-between pt-6 border-t border-zinc-800/60 mt-8">
+      {/* Navigation Buttons */}
+      <div className="flex items-center justify-between pt-6 border-t border-zinc-800/60">
         <button
           type="button"
           onClick={onPrev}
-          className="text-zinc-400 hover:text-zinc-100 px-6 py-2.5 rounded-full text-sm font-medium transition-colors"
+          className="px-5 py-2 rounded-xl text-xs font-medium border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
         >
-          Back
+          ← Back to Step 4
         </button>
+
         <button
-          onClick={handleSaveDraft}
-          disabled={isSubmitting}
-          className="bg-zinc-100 hover:bg-white text-zinc-950 px-6 py-2.5 rounded-full text-sm font-medium transition-all shadow-[0_0_15px_rgba(255,255,255,0.05)] hover:shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+          type="button"
+          disabled={isSaving}
+          onClick={handleSaveAndContinue}
+          className="bg-zinc-100 hover:bg-white text-zinc-950 px-6 py-2 rounded-xl text-xs font-medium transition-all shadow-sm disabled:opacity-50 cursor-pointer"
         >
-          {isSubmitting ? "Saving..." : "Save & Continue"}
+          {isSaving ? "Saving..." : "Save & Continue to Attachments →"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 1. WEIGHING PERFORMANCE VIEW
+// ==========================================
+function WeighingPerformanceView({
+  test,
+  report,
+  onChange,
+}: {
+  test: TestDefinition;
+  report: Report;
+  onChange: (t: TestDefinition) => void;
+}) {
+  const firstObs = (test.observations && test.observations[0]) || {};
+  const [testLoad, setTestLoad] = useState<string>(
+    firstObs.testLoad !== undefined ? String(firstObs.testLoad) : ""
+  );
+  const [indication, setIndication] = useState<string>(
+    firstObs.indication !== undefined ? String(firstObs.indication) : ""
+  );
+  const [zeroError, setZeroError] = useState<string>(
+    firstObs.zeroError !== undefined ? String(firstObs.zeroError) : "0"
+  );
+
+  const eVal = report.instrument?.verificationIntervalE ?? 1;
+  const accClass = report.instrument?.accuracyClass ?? "III";
+  const maxCap = report.instrument?.maxCapacity;
+
+  // Calculation payload
+  const payload = useMemo(() => {
+    if (testLoad === "" || indication === "") return null;
+    return {
+      testLoad: parseFloat(testLoad),
+      indication: parseFloat(indication),
+      zeroError: parseFloat(zeroError || "0"),
+      e: eVal,
+      accuracyClass: accClass,
+    };
+  }, [testLoad, indication, zeroError, eVal, accClass]);
+
+  // Hook handles debounce (400ms) and cancellation
+  const { result, loading, error } = useCalculation("weighingPerformance", payload);
+
+  // Sync test state when backend result updates
+  useEffect(() => {
+    if (result) {
+      onChange({
+        ...test,
+        observations: [
+          {
+            testLoad: testLoad !== "" ? parseFloat(testLoad) : 0,
+            indication: indication !== "" ? parseFloat(indication) : 0,
+            zeroError: zeroError !== "" ? parseFloat(zeroError) : 0,
+          },
+        ],
+        calculations: result,
+        result: result.result,
+        status: result.result !== "INCOMPLETE" ? "COMPLETED" : "INCOMPLETE",
+      });
+    }
+  }, [result]);
+
+  // Check if load exceeds capacity
+  const customMessages = useMemo(() => {
+    const msgs: { level: "ERROR" | "WARNING" | "INFO"; message: string }[] = [];
+    const numLoad = parseFloat(testLoad);
+    if (!isNaN(numLoad) && maxCap !== undefined && numLoad > maxCap) {
+      msgs.push({
+        level: "ERROR",
+        message: `Test load (${numLoad}) exceeds instrument maximum capacity (${maxCap}).`,
+      });
+    }
+    return msgs;
+  }, [testLoad, maxCap]);
+
+  return (
+    <div className="space-y-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6">
+      {/* Test Title & Auto-filled Metadata Chips */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-200">Weighing Performance Test</h3>
+          <p className="text-zinc-500 text-xs mt-0.5 font-mono">
+            Observed Error = Indication - Test Load
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 font-mono">
+            e = <strong className="text-zinc-200">{eVal}</strong>
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 font-mono">
+            Class: <strong className="text-zinc-200">{accClass}</strong>
+          </span>
+          {maxCap !== undefined && (
+            <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 font-mono">
+              Max: <strong className="text-zinc-200">{maxCap}</strong>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Input Fields */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+            Test Load
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={testLoad}
+            onChange={(e) => setTestLoad(e.target.value)}
+            placeholder="e.g. 500"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+            data-testid="input-testLoad"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+            Indication
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={indication}
+            onChange={(e) => setIndication(e.target.value)}
+            placeholder="e.g. 500.2"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+            data-testid="input-indication"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+            Zero Error
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={zeroError}
+            onChange={(e) => setZeroError(e.target.value)}
+            placeholder="0"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+            data-testid="input-zeroError"
+          />
+        </div>
+      </div>
+
+      {/* Backend Driven Pass/Fail Indicator */}
+      <PassFailIndicator
+        result={result || ((test.calculations as any) as CalculationResult)}
+        loading={loading}
+        error={error}
+        customMessages={customMessages}
+      />
+    </div>
+  );
+}
+
+// ==========================================
+// 2. ECCENTRICITY VIEW
+// ==========================================
+function EccentricityView({
+  test,
+  report,
+  onChange,
+}: {
+  test: TestDefinition;
+  report: Report;
+  onChange: (t: TestDefinition) => void;
+}) {
+  const eVal = report.instrument?.verificationIntervalE ?? 1;
+  const accClass = report.instrument?.accuracyClass ?? "III";
+  const maxCap = report.instrument?.maxCapacity;
+
+  // Initialize 5 positions
+  const [positionsData, setPositionsData] = useState(() => {
+    const existing = test.observations || [];
+    return ECCENTRICITY_POSITIONS.map((pos) => {
+      const match = existing.find((o: any) => o.position === pos);
+      return {
+        position: pos,
+        load: match?.load !== undefined ? String(match.load) : match?.reference !== undefined ? String(match.reference) : "",
+        reference: match?.reference !== undefined ? String(match.reference) : match?.load !== undefined ? String(match.load) : "",
+        indication: match?.indication !== undefined ? String(match.indication) : "",
+      };
+    });
+  });
+
+  const handleRowChange = (index: number, field: "load" | "reference" | "indication", val: string) => {
+    setPositionsData((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: val };
+      // Keep load and reference aligned if one was empty
+      if (field === "load" && copy[index].reference === "") {
+        copy[index].reference = val;
+      }
+      return copy;
+    });
+  };
+
+  // Prepare payload for calculation
+  const payload = useMemo(() => {
+    const allFilled = positionsData.every(
+      (p) => p.indication !== "" && (p.reference !== "" || p.load !== "")
+    );
+    if (!allFilled) return null;
+
+    return {
+      loads: positionsData.map((p) => ({
+        position: p.position,
+        load: parseFloat(p.load || p.reference || "0"),
+        reference: parseFloat(p.reference || p.load || "0"),
+        indication: parseFloat(p.indication || "0"),
+      })),
+      e: eVal,
+      accuracyClass: accClass,
+    };
+  }, [positionsData, eVal, accClass]);
+
+  const { result, loading, error } = useCalculation("eccentricity", payload);
+
+  useEffect(() => {
+    if (result) {
+      onChange({
+        ...test,
+        observations: positionsData.map((p) => ({
+          position: p.position,
+          load: parseFloat(p.load || p.reference || "0"),
+          reference: parseFloat(p.reference || p.load || "0"),
+          indication: parseFloat(p.indication || "0"),
+        })),
+        calculations: result,
+        result: result.result,
+        status: result.result !== "INCOMPLETE" ? "COMPLETED" : "INCOMPLETE",
+      });
+    }
+  }, [result]);
+
+  // Capacity overload warning
+  const customMessages = useMemo(() => {
+    const msgs: { level: "ERROR" | "WARNING" | "INFO"; message: string }[] = [];
+    if (maxCap !== undefined) {
+      const overloads = positionsData.filter(
+        (p) => parseFloat(p.load || p.reference || "0") > maxCap
+      );
+      if (overloads.length > 0) {
+        msgs.push({
+          level: "ERROR",
+          message: `Eccentricity test load exceeds instrument maximum capacity (${maxCap}) at positions: ${overloads.map(o => o.position).join(", ")}.`,
+        });
+      }
+    }
+    return msgs;
+  }, [positionsData, maxCap]);
+
+  // Extract positions detail from backend result
+  const calculationPositions = (result?.details?.positions as any[]) || [];
+  const worstPosition = (result?.details?.worstPosition as string) || "";
+
+  return (
+    <div className="space-y-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-200">Eccentricity Test</h3>
+          <p className="text-zinc-500 text-xs mt-0.5">
+            Test 5 positions (approx. 1/3 Max) according to OIML R-76.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 font-mono">
+            e = <strong className="text-zinc-200">{eVal}</strong>
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 font-mono">
+            Class: <strong className="text-zinc-200">{accClass}</strong>
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Table of 5 Positions */}
+        <div className="lg:col-span-7 space-y-2 overflow-x-auto">
+          <table className="w-full text-left text-xs text-zinc-300">
+            <thead className="text-[11px] uppercase text-zinc-500 border-b border-zinc-800">
+              <tr>
+                <th className="py-2 px-2">Position</th>
+                <th className="py-2 px-2">Load</th>
+                <th className="py-2 px-2">Reference</th>
+                <th className="py-2 px-2">Indication</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/50">
+              {positionsData.map((row, idx) => (
+                <tr key={row.position}>
+                  <td className="py-2 px-2 font-mono text-[11px] text-zinc-400">
+                    {row.position}
+                  </td>
+                  <td className="py-2 px-1">
+                    <input
+                      type="number"
+                      step="any"
+                      value={row.load}
+                      onChange={(e) => handleRowChange(idx, "load", e.target.value)}
+                      placeholder="Load"
+                      className="w-24 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600"
+                      data-testid={`ecc-load-${row.position}`}
+                    />
+                  </td>
+                  <td className="py-2 px-1">
+                    <input
+                      type="number"
+                      step="any"
+                      value={row.reference}
+                      onChange={(e) => handleRowChange(idx, "reference", e.target.value)}
+                      placeholder="Reference"
+                      className="w-24 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600"
+                      data-testid={`ecc-ref-${row.position}`}
+                    />
+                  </td>
+                  <td className="py-2 px-1">
+                    <input
+                      type="number"
+                      step="any"
+                      value={row.indication}
+                      onChange={(e) => handleRowChange(idx, "indication", e.target.value)}
+                      placeholder="Indication"
+                      className="w-24 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600"
+                      data-testid={`ecc-ind-${row.position}`}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Platform SVG Topography Visualizer */}
+        <div className="lg:col-span-5">
+          <PlatformMap
+            positions={calculationPositions}
+            worstPosition={worstPosition}
+          />
+        </div>
+      </div>
+
+      {/* Backend Driven Pass/Fail Indicator */}
+      <PassFailIndicator
+        result={result || ((test.calculations as any) as CalculationResult)}
+        loading={loading}
+        error={error}
+        customMessages={customMessages}
+      />
+    </div>
+  );
+}
+
+// ==========================================
+// 3. REPEATABILITY VIEW
+// ==========================================
+function RepeatabilityView({
+  test,
+  report,
+  onChange,
+}: {
+  test: TestDefinition;
+  report: Report;
+  onChange: (t: TestDefinition) => void;
+}) {
+  const eVal = report.instrument?.verificationIntervalE ?? 1;
+  const accClass = report.instrument?.accuracyClass ?? "III";
+  const maxCap = report.instrument?.maxCapacity;
+
+  // Extract initial values
+  const existingObs = (test.observations as any[]) || [];
+  const initialLoad =
+    existingObs.find((o: any) => o.testLoad !== undefined)?.testLoad ??
+    (test.calculations as any)?.details?.testLoad ??
+    "";
+  const initialReadings = existingObs
+    .map((o: any) => o.reading)
+    .filter((r: any) => r !== undefined && r !== "");
+
+  const [testLoad, setTestLoad] = useState<string>(
+    initialLoad !== "" ? String(initialLoad) : ""
+  );
+  const [repsCount, setRepsCount] = useState<number>(
+    initialReadings.length >= 2 ? initialReadings.length : 10
+  );
+
+  const [readings, setReadings] = useState<string[]>(() => {
+    const list: string[] = [];
+    for (let i = 0; i < (repsCount || 10); i++) {
+      list.push(initialReadings[i] !== undefined ? String(initialReadings[i]) : "");
+    }
+    return list;
+  });
+
+  const handleRepsCountChange = (newCount: number) => {
+    setRepsCount(newCount);
+    setReadings((prev) => {
+      const updated = [...prev];
+      while (updated.length < newCount) updated.push("");
+      return updated.slice(0, newCount);
+    });
+  };
+
+  const handleReadingChange = (index: number, val: string) => {
+    setReadings((prev) => {
+      const copy = [...prev];
+      copy[index] = val;
+      return copy;
+    });
+  };
+
+  // Payload for backend calculation
+  const payload = useMemo(() => {
+    const validReadings = readings
+      .map((r) => parseFloat(r))
+      .filter((n) => !isNaN(n));
+    if (testLoad === "" || validReadings.length < 2) return null;
+
+    return {
+      testLoad: parseFloat(testLoad),
+      readings: validReadings,
+      e: eVal,
+      accuracyClass: accClass,
+    };
+  }, [testLoad, readings, eVal, accClass]);
+
+  const { result, loading, error } = useCalculation("repeatability", payload);
+
+  useEffect(() => {
+    if (result) {
+      const numLoad = parseFloat(testLoad);
+      onChange({
+        ...test,
+        observations: readings.map((r, i) => ({
+          repetition: i + 1,
+          reading: r !== "" ? parseFloat(r) : null,
+          testLoad: numLoad,
+        })),
+        calculations: result,
+        result: result.result,
+        status: result.result !== "INCOMPLETE" ? "COMPLETED" : "INCOMPLETE",
+      });
+    }
+  }, [result]);
+
+  // Capacity overload warning
+  const customMessages = useMemo(() => {
+    const msgs: { level: "ERROR" | "WARNING" | "INFO"; message: string }[] = [];
+    const numLoad = parseFloat(testLoad);
+    if (!isNaN(numLoad) && maxCap !== undefined && numLoad > maxCap) {
+      msgs.push({
+        level: "ERROR",
+        message: `Repeatability test load (${numLoad}) exceeds instrument maximum capacity (${maxCap}).`,
+      });
+    }
+    return msgs;
+  }, [testLoad, maxCap]);
+
+  return (
+    <div className="space-y-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-200">Repeatability Test</h3>
+          <p className="text-zinc-500 text-xs mt-0.5">
+            Range of readings (max - min) must not exceed MPE per OIML R-76.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 font-mono">
+            e = <strong className="text-zinc-200">{eVal}</strong>
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 font-mono">
+            Class: <strong className="text-zinc-200">{accClass}</strong>
+          </span>
+        </div>
+      </div>
+
+      {/* Controls: Test Load & Repetitions Selector */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+            Test Load
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={testLoad}
+            onChange={(e) => setTestLoad(e.target.value)}
+            placeholder="e.g. 3000"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+            data-testid="input-repeatability-load"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+            Number of Repetitions (Default 10)
+          </label>
+          <select
+            value={repsCount}
+            onChange={(e) => handleRepsCountChange(parseInt(e.target.value, 10))}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-600 cursor-pointer"
+            data-testid="select-repeatability-reps"
+          >
+            <option value={3}>3 Repetitions</option>
+            <option value={5}>5 Repetitions</option>
+            <option value={10}>10 Repetitions (Standard)</option>
+            <option value={15}>15 Repetitions</option>
+            <option value={20}>20 Repetitions</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Readings Inputs Grid & Dispersion Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Dynamic Inputs */}
+        <div className="lg:col-span-6 grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          {readings.map((val, idx) => (
+            <div key={idx} className="space-y-1">
+              <label className="block text-[11px] text-zinc-500 font-mono">
+                Rep {idx + 1}
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={val}
+                onChange={(e) => handleReadingChange(idx, e.target.value)}
+                placeholder="Reading"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600"
+                data-testid={`rep-reading-${idx + 1}`}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* Recharts Curve with Max/Min Reference Lines */}
+        <div className="lg:col-span-6">
+          <RepeatabilityChart
+            readings={readings}
+            maxVal={result?.details?.max ?? (test.calculations?.details as any)?.max}
+            minVal={result?.details?.min ?? (test.calculations?.details as any)?.min}
+          />
+        </div>
+      </div>
+
+      {/* Backend Driven Pass/Fail Indicator */}
+      <PassFailIndicator
+        result={result || ((test.calculations as any) as CalculationResult)}
+        loading={loading}
+        error={error}
+        customMessages={customMessages}
+      />
+    </div>
+  );
+}
+
+// ==========================================
+// 4. DISCRIMINATION VIEW
+// ==========================================
+function DiscriminationView({
+  test,
+  report,
+  onChange,
+}: {
+  test: TestDefinition;
+  report: Report;
+  onChange: (t: TestDefinition) => void;
+}) {
+  const dVal = report.instrument?.actualIntervalD ?? 1;
+
+  const firstObs = (test.observations && test.observations[0]) || {};
+  const [initialIndication, setInitialIndication] = useState<string>(
+    firstObs.initialIndication !== undefined ? String(firstObs.initialIndication) : ""
+  );
+  const [addedLoad, setAddedLoad] = useState<string>(
+    firstObs.addedLoad !== undefined ? String(firstObs.addedLoad) : ""
+  );
+  const [newIndication, setNewIndication] = useState<string>(
+    firstObs.newIndication !== undefined ? String(firstObs.newIndication) : ""
+  );
+
+  const payload = useMemo(() => {
+    if (initialIndication === "" || newIndication === "") return null;
+    return {
+      initialIndication: parseFloat(initialIndication),
+      addedLoad: addedLoad !== "" ? parseFloat(addedLoad) : undefined,
+      newIndication: parseFloat(newIndication),
+      d: dVal,
+    };
+  }, [initialIndication, addedLoad, newIndication, dVal]);
+
+  const { result, loading, error } = useCalculation("discrimination", payload);
+
+  useEffect(() => {
+    if (result) {
+      onChange({
+        ...test,
+        observations: [
+          {
+            initialIndication: initialIndication !== "" ? parseFloat(initialIndication) : 0,
+            addedLoad: addedLoad !== "" ? parseFloat(addedLoad) : null,
+            newIndication: newIndication !== "" ? parseFloat(newIndication) : 0,
+          },
+        ],
+        calculations: result,
+        result: result.result,
+        status: result.result !== "INCOMPLETE" ? "COMPLETED" : "INCOMPLETE",
+      });
+    }
+  }, [result]);
+
+  return (
+    <div className="space-y-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-200">Discrimination Test</h3>
+          <p className="text-zinc-500 text-xs mt-0.5">
+            Verify response to an extra load equivalent to 1.4d per OIML R-76.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 font-mono">
+            d = <strong className="text-zinc-200">{dVal}</strong> (auto-filled)
+          </span>
+        </div>
+      </div>
+
+      {/* Input Fields */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+            Initial Indication
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={initialIndication}
+            onChange={(e) => setInitialIndication(e.target.value)}
+            placeholder="e.g. 1000"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+            data-testid="input-initialIndication"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+            Added Load (Optional, standard: 1.4d)
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={addedLoad}
+            onChange={(e) => setAddedLoad(e.target.value)}
+            placeholder={`e.g. ${(1.4 * dVal).toFixed(2)}`}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+            data-testid="input-addedLoad"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+            New Indication
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={newIndication}
+            onChange={(e) => setNewIndication(e.target.value)}
+            placeholder="e.g. 1001"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+            data-testid="input-newIndication"
+          />
+        </div>
+      </div>
+
+      {/* Backend Driven Pass/Fail Indicator */}
+      <PassFailIndicator
+        result={result || ((test.calculations as any) as CalculationResult)}
+        loading={loading}
+        error={error}
+      />
     </div>
   );
 }

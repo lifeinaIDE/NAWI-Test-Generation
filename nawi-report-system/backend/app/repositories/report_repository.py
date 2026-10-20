@@ -1,10 +1,11 @@
 import json
 import os
 import glob
+import uuid
+import threading
 from abc import ABC, abstractmethod
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel
 
 from app.schemas import Report
 
@@ -36,6 +37,68 @@ class JsonReportRepository(ReportRepository):
     def __init__(self, storage_dir: str = REPORTS_DIR):
         self.storage_dir = storage_dir
         os.makedirs(self.storage_dir, exist_ok=True)
+        self._id_lock = threading.Lock()
+        self._index_lock = threading.Lock()
+
+    @property
+    def _index_path(self) -> str:
+        return os.path.join(self.storage_dir, "_index.json")
+
+    def _load_index(self) -> dict:
+        if not os.path.exists(self._index_path):
+            return self._rebuild_index()
+        try:
+            with open(self._index_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return self._rebuild_index()
+
+    def _save_index(self, index_data: dict) -> None:
+        temp_name = f"._index.{uuid.uuid4().hex}.tmp"
+        tmp_filepath = os.path.join(self.storage_dir, temp_name)
+        try:
+            with open(tmp_filepath, "w", encoding="utf-8") as f:
+                json.dump(index_data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_filepath, self._index_path)
+        except Exception:
+            if os.path.exists(tmp_filepath):
+                try:
+                    os.remove(tmp_filepath)
+                except OSError:
+                    pass
+
+    def _rebuild_index(self) -> dict:
+        index_data = {}
+        pattern = os.path.join(self.storage_dir, "*.json")
+        for f in glob.glob(pattern):
+            basename = os.path.basename(f)
+            if basename.startswith(".") or basename == "_index.json":
+                continue
+            try:
+                with open(f, "r", encoding="utf-8") as file:
+                    data = json.load(file)
+                    r_id = data.get("reportId")
+                    if r_id:
+                        index_data[r_id] = data
+            except Exception:
+                pass
+        self._save_index(index_data)
+        return index_data
+
+    def _update_index_entry(self, report: Report) -> None:
+        with self._index_lock:
+            index_data = self._load_index()
+            index_data[report.reportId] = report.model_dump(by_alias=True, mode="json")
+            self._save_index(index_data)
+
+    def _delete_index_entry(self, report_id: str) -> None:
+        with self._index_lock:
+            index_data = self._load_index()
+            if report_id in index_data:
+                index_data.pop(report_id, None)
+                self._save_index(index_data)
 
     def _get_filepath(self, report_id: str) -> str:
         return os.path.join(self.storage_dir, f"{report_id}.json")
@@ -63,11 +126,11 @@ class JsonReportRepository(ReportRepository):
         return f"NAWI-{year}-{next_seq:04d}"
 
     def create(self, report: Report) -> Report:
-        if not report.reportId or report.reportId == "stub":
-            report.reportId = self._generate_id()
-        
-        self.update(report)
-        return report
+        with self._id_lock:
+            if not report.reportId or report.reportId in ("stub", ""):
+                report.reportId = self._generate_id()
+            self.update(report)
+            return report
 
     def get(self, report_id: str) -> Optional[Report]:
         filepath = self._get_filepath(report_id)
@@ -80,32 +143,44 @@ class JsonReportRepository(ReportRepository):
 
     def update(self, report: Report) -> Report:
         filepath = self._get_filepath(report.reportId)
-        tmp_filepath = filepath + ".tmp"
+        # Atomic write: write to unique temp file in the same directory, then os.replace
+        temp_name = f".{report.reportId}.{uuid.uuid4().hex}.tmp"
+        tmp_filepath = os.path.join(self.storage_dir, temp_name)
         
-        # Atomic write
-        with open(tmp_filepath, "w", encoding="utf-8") as f:
-            # model_dump(mode='json') or exclude_none if appropriate
-            json.dump(report.model_dump(mode='json'), f, indent=2)
-        
-        os.replace(tmp_filepath, filepath)
+        try:
+            with open(tmp_filepath, "w", encoding="utf-8") as f:
+                json.dump(report.model_dump(by_alias=True, mode='json'), f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_filepath, filepath)
+            # Maintain index file updated on every report write
+            self._update_index_entry(report)
+        except Exception:
+            if os.path.exists(tmp_filepath):
+                try:
+                    os.remove(tmp_filepath)
+                except OSError:
+                    pass
+            raise
+            
         return report
 
     def list(self) -> List[Report]:
-        reports = []
-        pattern = os.path.join(self.storage_dir, "*.json")
-        for f in glob.glob(pattern):
-            try:
-                with open(f, "r", encoding="utf-8") as file:
-                    data = json.load(file)
+        with self._index_lock:
+            index_data = self._load_index()
+            reports = []
+            for data in index_data.values():
+                try:
                     reports.append(Report(**data))
-            except Exception:
-                pass
-        return reports
+                except Exception:
+                    pass
+            return reports
 
     def delete(self, report_id: str) -> bool:
         filepath = self._get_filepath(report_id)
         if os.path.exists(filepath):
             os.remove(filepath)
+            self._delete_index_entry(report_id)
             return True
         return False
 

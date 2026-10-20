@@ -14,7 +14,8 @@ Error-handling convention (all 4xx responses):
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, reports, calculations, rules, attachments, audit, dashboard
+from app.api import auth, reports, calculations, rules, attachments, audit, dashboard, users
+from app.core.config import settings
 
 app = FastAPI(
     title="NAWI Test Report Management System",
@@ -44,9 +45,11 @@ _dev_origins = [
     "http://127.0.0.1:3000",
 ]
 
+_cors_origins = list(set(_dev_origins + (settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else [settings.CORS_ORIGINS]) + _extra_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_dev_origins + _extra_origins,
+    allow_origins=_cors_origins,
     allow_origin_regex=r"https://.*\.vercel\.app",  # allow all Vercel preview/prod deployments
     allow_credentials=True,
     allow_methods=["*"],
@@ -63,10 +66,11 @@ app.include_router(rules.router)
 app.include_router(attachments.router)
 app.include_router(audit.router)
 app.include_router(dashboard.router)
+app.include_router(users.router)
 
 
 # ---------------------------------------------------------------------------
-# Root health-check
+# Root and /api/health checks
 # ---------------------------------------------------------------------------
 @app.get("/", tags=["health"])
 async def root():
@@ -74,5 +78,15 @@ async def root():
         "service": "NAWI Test Report Management System",
         "version": "1.0.0",
         "status": "running",
+        "docs": "/docs",
+    }
+
+
+@app.get("/api/health", tags=["health"])
+async def health():
+    return {
+        "status": "healthy",
+        "service": "NAWI Test Report Management System",
+        "version": "1.0.0",
         "docs": "/docs",
     }

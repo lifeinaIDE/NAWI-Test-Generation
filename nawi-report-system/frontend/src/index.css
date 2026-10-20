@@ -1,5 +1,45 @@
 @import "tailwindcss";
 
+@theme {
+  --color-primary-50: #f8fafc;
+  --color-primary-100: #f1f5f9;
+  --color-primary-200: #e2e8f0;
+  --color-primary-500: #64748b;
+  --color-primary-600: #475569;
+  --color-primary-900: #0f172a;
+  --color-primary-950: #020617;
+
+  --color-pass: #10b981;
+  --color-pass-light: #d1fae5;
+  --color-pass-dark: #065f46;
+  --color-pass-bg: #064e3b33;
+
+  --color-fail: #f43f5e;
+  --color-fail-light: #ffe4e6;
+  --color-fail-dark: #9f1239;
+  --color-fail-bg: #88133733;
+
+  --color-warning: #f59e0b;
+  --color-warning-light: #fef3c7;
+  --color-warning-dark: #92400e;
+  --color-warning-bg: #78350f33;
+
+  --color-info: #0ea5e9;
+  --color-info-light: #e0f2fe;
+  --color-info-dark: #0369a1;
+  --color-info-bg: #0c4a6e33;
+
+  --color-status-draft: #71717a;
+  --color-status-inprogress: #38bdf8;
+  --color-status-submitted: #fbbf24;
+  --color-status-queryraised: #c084fc;
+  --color-status-approved: #34d399;
+  --color-status-rejected: #fb7185;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Courier New, monospace;
+}
+
 /* NAWI Report System — Global Design Tokens */
 @layer base {
   html {

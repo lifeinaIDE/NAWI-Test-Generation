@@ -14,8 +14,9 @@ async def get_summary(current_user: User = Depends(get_current_user)):
     summary = {
         "total": len(reports),
         "drafts": sum(1 for r in reports if r.status == "DRAFT"),
-        "inProgress": sum(1 for r in reports if r.status in ("IN_PROGRESS", "QUERY_RAISED")),
+        "inProgress": sum(1 for r in reports if r.status == "IN_PROGRESS"),
         "submittedForReview": sum(1 for r in reports if r.status == "SUBMITTED_FOR_REVIEW"),
+        "queryRaised": sum(1 for r in reports if r.status == "QUERY_RAISED"),
         "approved": sum(1 for r in reports if r.status == "APPROVED"),
         "rejected": sum(1 for r in reports if r.status == "REJECTED"),
     }
@@ -50,7 +51,7 @@ async def get_statistics(current_user: User = Depends(get_current_user)):
     for e in reversed(all_events):
         # AuditEvent is a Pydantic model — use attribute access, not subscript
         if e.reportId in visible_report_ids:
-            recent.append(e)
+            recent.append(e.model_dump(by_alias=True))
         if len(recent) >= 10:
             break
 

@@ -1,28 +1,49 @@
 {
-  "ruleSetId": "OIML-R76-PROTOTYPE-V4",
+  "ruleSetId": "OIML-R76-2006-V4",
   "standard": "OIML R-76",
   "edition": "Prototype configuration \u2014 requires domain validation against the official edition",
-  "effectiveFrom": "2026-01-01",
-  "changeNotes": "",
+  "effectiveFrom": "2026-10-20",
+  "changeNotes": "Draft version created from OIML-R76-2006-V3",
+  "status": "ARCHIVED",
+  "createdBy": "admin",
+  "createdAt": "2026-10-20T10:38:56.167490Z",
+  "warningRatio": 0.9,
   "mpeRules": {
     "III": [
       {
         "minIntervals": 0,
-        "maxIntervals": 500,
+        "maxIntervals": 5000,
+        "mpeInE": 0.5
+      },
+      {
+        "minIntervals": 5000,
+        "maxIntervals": 20000,
+        "mpeInE": 1.0
+      },
+      {
+        "minIntervals": 20000,
+        "maxIntervals": 100000,
+        "mpeInE": 1.5
+      }
+    ],
+    "I": [
+      {
+        "minIntervals": 0,
+        "maxIntervals": 50000,
         "mpeInE": 0.5,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       },
       {
-        "minIntervals": 500,
-        "maxIntervals": 2000,
+        "minIntervals": 50000,
+        "maxIntervals": 200000,
         "mpeInE": 1.0,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       },
       {
-        "minIntervals": 2000,
-        "maxIntervals": 10000,
+        "minIntervals": 200000,
+        "maxIntervals": 1000000,
         "mpeInE": 1.5,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       }
     ],
     "II": [
@@ -30,19 +51,19 @@
         "minIntervals": 0,
         "maxIntervals": 5000,
         "mpeInE": 0.5,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       },
       {
         "minIntervals": 5000,
         "maxIntervals": 20000,
         "mpeInE": 1.0,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       },
       {
         "minIntervals": 20000,
         "maxIntervals": 100000,
         "mpeInE": 1.5,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       }
     ],
     "IIII": [
@@ -50,19 +71,19 @@
         "minIntervals": 0,
         "maxIntervals": 50,
         "mpeInE": 0.5,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       },
       {
         "minIntervals": 50,
         "maxIntervals": 200,
         "mpeInE": 1.0,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       },
       {
         "minIntervals": 200,
         "maxIntervals": 1000,
         "mpeInE": 1.5,
-        "note": "Prototype value \u2014 requires domain validation."
+        "requiresDomainValidation": true
       }
     ]
   },
@@ -88,6 +109,6 @@
       "criterion": "indication_change_greater_than_or_equal_to_d"
     }
   },
-  "isActive": true,
+  "isActive": false,
   "isLocked": false
 }

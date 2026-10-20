@@ -12,6 +12,7 @@
 
 import axios, { AxiosError } from "axios";
 import toast from "react-hot-toast";
+import { tokenStore } from "./client";
 import type {
   LoginRequest,
   LoginResponse,
@@ -94,15 +95,9 @@ api.interceptors.response.use(
 );
 
 // ---------------------------------------------------------------------------
-// Token store — persists to localStorage so session survives page refresh
+// Token store — in-memory only per Phase 2 specification
 // ---------------------------------------------------------------------------
-const TOKEN_KEY = "nawi_auth_token";
-
-export const tokenStore = {
-  set(t: string) { localStorage.setItem(TOKEN_KEY, t); },
-  get() { return localStorage.getItem(TOKEN_KEY); },
-  clear() { localStorage.removeItem(TOKEN_KEY); },
-};
+export { tokenStore } from "./client";
 
 // ---------------------------------------------------------------------------
 // Auth
@@ -122,8 +117,8 @@ export const authApi = {
 // Reports
 // ---------------------------------------------------------------------------
 export const reportsApi = {
-  async list(params?: Record<string, string>): Promise<{ items: Report[]; total: number }> {
-    const res = await api.get("/api/reports", { params });
+  async list(params?: Record<string, any>): Promise<{ items: Report[]; total: number; page: number; pageSize: number }> {
+    const res = await api.get<{ items: Report[]; total: number; page: number; pageSize: number }>("/api/reports", { params });
     return res.data;
   },
   async create(body: CreateReportRequest): Promise<Report> {
@@ -149,13 +144,22 @@ export const reportsApi = {
     const res = await api.post<Report>(`/api/reports/${reportId}/return`, { comment });
     return res.data;
   },
+  async return(reportId: string, comment: string): Promise<Report> {
+    return this.returnReport(reportId, comment);
+  },
   async approve(reportId: string, comment: string): Promise<Report> {
     const res = await api.post<Report>(`/api/reports/${reportId}/approve`, { comment });
     return res.data;
   },
+  async approveReport(reportId: string, comment: string): Promise<Report> {
+    return this.approve(reportId, comment);
+  },
   async reject(reportId: string, comment: string): Promise<Report> {
     const res = await api.post<Report>(`/api/reports/${reportId}/reject`, { comment });
     return res.data;
+  },
+  async rejectReport(reportId: string, comment: string): Promise<Report> {
+    return this.reject(reportId, comment);
   },
   async finalize(reportId: string): Promise<void> {
     await api.post(`/api/reports/${reportId}/finalize`);
@@ -166,6 +170,59 @@ export const reportsApi = {
   async getAudit(reportId: string): Promise<AuditEvent[]> {
     const res = await api.get<{ events: AuditEvent[] }>(`/api/reports/${reportId}/audit`);
     return res.data.events;
+  },
+  async getAuditTrail(reportId: string): Promise<AuditEvent[]> {
+    return this.getAudit(reportId);
+  },
+  async validate(reportId: string): Promise<{ reportId: string; valid: boolean; messages: ValidationMessage[] }> {
+    const res = await api.post<{ reportId: string; valid: boolean; messages: ValidationMessage[] }>(`/api/reports/${reportId}/validate`);
+    return res.data;
+  },
+  async verify(reportId: string): Promise<{ match: boolean; storedHash: string; computedHash: string; reportId?: string; status?: string }> {
+    const res = await api.post<{ match: boolean; storedHash: string; computedHash: string; reportId?: string; status?: string }>(`/api/reports/${reportId}/verify`);
+    return res.data;
+  },
+  async downloadPdf(reportId: string): Promise<Blob> {
+    const res = await api.get(`/api/reports/${reportId}/download`, {
+      responseType: "blob",
+    });
+    return res.data;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+export const attachmentsApi = {
+  async list(reportId: string): Promise<any[]> {
+    const res = await api.get<any[]>(`/api/reports/${reportId}/attachments`);
+    return res.data;
+  },
+  async upload(
+    reportId: string,
+    file: File,
+    category: string = "photo",
+    expiryDate?: string
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("category", category);
+    if (expiryDate) {
+      formData.append("expiryDate", expiryDate);
+    }
+    const res = await api.post(`/api/reports/${reportId}/attachments`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
+  async delete(reportId: string, attachmentId: string): Promise<{ deleted: string; success: boolean }> {
+    const res = await api.delete<{ deleted: string; success: boolean }>(
+      `/api/reports/${reportId}/attachments/${attachmentId}`
+    );
+    return res.data;
+  },
+  getDownloadUrl(reportId: string, attachmentId: string): string {
+    return `/api/reports/${reportId}/attachments/${attachmentId}`;
   },
 };
 
@@ -207,8 +264,8 @@ export const rulesApi = {
     const res = await api.get<RuleSet>(`/api/rules/${id}`);
     return res.data;
   },
-  async create(): Promise<RuleSet> {
-    const res = await api.post<RuleSet>("/api/rules");
+  async create(body?: { copyFrom?: string; standard?: string; edition?: string; changeNotes?: string }): Promise<RuleSet> {
+    const res = await api.post<RuleSet>("/api/rules", body);
     return res.data;
   },
   async update(id: string, body: Partial<RuleSet>): Promise<RuleSet> {
@@ -243,4 +300,37 @@ export const auditApi = {
     const res = await api.get<{ events: AuditEvent[] }>("/api/audit");
     return res.data.events;
   },
+  async getForReport(reportId: string): Promise<AuditEvent[]> {
+    const res = await api.get<{ events: AuditEvent[] }>(`/api/reports/${reportId}/audit`);
+    return res.data.events;
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Health
+// ---------------------------------------------------------------------------
+export const healthApi = {
+  async check(): Promise<{ status: string; service: string; version: string; docs?: string }> {
+    const res = await api.get<{ status: string; service: string; version: string; docs?: string }>("/api/health");
+    return res.data;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Users (Admin)
+// ---------------------------------------------------------------------------
+export const usersApi = {
+  async list(): Promise<User[]> {
+    const res = await api.get<User[]>("/api/users");
+    return res.data;
+  },
+  async create(user: Partial<User> & { password?: string }): Promise<User> {
+    const res = await api.post<User>("/api/users", user);
+    return res.data;
+  },
+  async update(id: string, user: Partial<User>): Promise<User> {
+    const res = await api.put<User>(`/api/users/${id}`, user);
+    return res.data;
+  },
+};
+
